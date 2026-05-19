@@ -1,14 +1,10 @@
 # ==============================================================
-# File: main_loss.py
+# main_loss.py
 # Description:
 #   Supervised training for landslide susceptibility mapping
-#   Compatible with LightMambaFeatureExtractor (multi-scale)
-#   + SharedDecoder (internal fusion)
+#   Compatible with Light FeatureExtractor (multi-scale)
 #   Loss = BCE + SSIM + TV with Pareto weighting
-# Author: YY Lab
-# Date: 2025-12
 # ==============================================================
-
 import os
 import csv
 import torch
@@ -24,20 +20,19 @@ import inspect
 from data_loader import get_dataloader, get_balanced_subset
 from FeatureExtractor import MDFeatureExtractor
 from shared_decoder import SharedDecoder
-
-
 # ==============================================================
 # Configuration
 # ==============================================================
 class Config:
-    """Training configuration."""
-    msi_path = r"F:\train2026\src_4937_MSI.tif"
-    dem_path = r"F:\train2026\src_4937_DEM.tif"
-    gt_path  = r"F:\train2026\src_4937_GT.tif"
+    """Training configuration """
+
+    msi_path = r"...\demo_datasets\DEM_demo_Beiluhe.tif"
+    dem_path = r"...\demo_datasets\DEM_demo_Beiluhe.tif"
+    gt_path  = r"...\demo_datasets\DEM_demo_Beiluhe.tif"
 
     tile_size = 256
     stride = 200
-    batch_size = 4
+    batch_size = 21
     num_workers = 0
     num_epochs = 150
     lr = 1e-4
@@ -53,7 +48,7 @@ class Config:
     os.makedirs(save_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
 # ==============================================================
-# SSIM + BCE + TV Composite Loss
+# Composite Loss: SSIM + BCE + TV
 # ==============================================================
 def gaussian_window(window_size, sigma, channel):
     gauss = torch.Tensor(
@@ -67,7 +62,7 @@ def gaussian_window(window_size, sigma, channel):
 
 
 def ssim(pred, target, window_size=11, sigma=1.5, data_range=1.0):
-    """Compute differentiable SSIM between pred and target."""
+
     channel = pred.size(1)
     window = gaussian_window(window_size, sigma, channel).to(pred.device)
     mu1 = F.conv2d(pred, window, padding=window_size//2, groups=channel)
@@ -90,7 +85,7 @@ def ssim(pred, target, window_size=11, sigma=1.5, data_range=1.0):
 
 
 class SSIMTVLoss(nn.Module):
-    """Combined BCE + SSIM + TV loss."""
+
     def __init__(self, alpha=1.0, beta=0.5, gamma=0.1):
         super().__init__()
         self.bce = nn.BCEWithLogitsLoss()
@@ -120,7 +115,6 @@ def pareto_update(grad1, grad2):
     w1 = 1 - (g1 / total)
     w2 = 1 - (g2 / total)
     return w1.item(), w2.item()
-
 
 # ==============================================================
 # Training Loop
@@ -168,10 +162,11 @@ def train_one_epoch(model_fea, model_dec, loader, optimizer, criterion, device):
 
 
 # ==============================================================
-# Live Training Plot
+# Training Plot
 # ==============================================================
 class LiveLossPlotter:
-    """Real-time visualization of loss and accuracy"""
+    """Visualization of loss and accuracy"""
+
     def __init__(self):
         plt.ion()
         self.fig, (self.ax_loss, self.ax_acc) = plt.subplots(1, 2, figsize=(10, 4))
@@ -204,7 +199,7 @@ class LiveLossPlotter:
 
 
 # ==============================================================
-# Main Training Entry
+# Main Training
 # ==============================================================
 def main():
     cfg = Config()
