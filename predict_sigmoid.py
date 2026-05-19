@@ -1,18 +1,16 @@
 # ==============================================================
-# File: run_overall.py
+# predict_sigmoid.py
 # Description:
 #   landslide susceptibility mapping
-#   - MDFeatureExtractor + SharedDecoder (strict I/O)
-#   - Gaussian-weighted sliding window blending (probability domain)
-#   - Use the data loading pipeline as main.py (data_loader.py)
-#   - GeoTIFF output (0-1) + PNG with colorbar (percentile clip & gamma for visualization only)
-#   - Fix: final blended map is stretched to full [0,1] by dividing with global max (so your 0~0.6 becomes 0~1)
+#   - Gaussian-weighted sliding window (probability domain)
+#   - GeoTIFF output (0-1)
 # ==============================================================
 import os
 import time
 import argparse
 import numpy as np
 from tqdm import tqdm
+
 import torch
 import matplotlib.pyplot as plt
 from matplotlib.colors import PowerNorm, Normalize
@@ -20,18 +18,22 @@ from osgeo import gdal
 from FeatureExtractor import MDFeatureExtractor
 from shared_decoder import SharedDecoder
 from data_loader import get_dataloader
+
 # ==============================================================
 # Configuration
 # ==============================================================
-class Config:
-    model_ckpt = r"F:\landslides2026\checkpoints_MDDB\epoch_149.pth"
-    # msi_path = r"F:\train2026\src_4937_MSI.tif"
-    # dem_path = r"F:\train2026\src_4937_DEM.tif"
-    msi_path = r"F:\UESTC20250913\landslidesdatasets\GF7_4938_Fusion_21000.tif"
-    dem_path = r"F:\UESTC20250913\landslidesdatasets\GF7_4938_DEM_Clip21000.tif"
 
-    output_tif = r"F:\landslides2026\4938_sigoma_149.tif"
-    output_png = r"F:\landslides2026\4938_sigoma_149.png"
+class Config:
+
+    model_ckpt = r"F:...\checkpoints_MDDB\best_logs_MDDB.pth"
+
+    msi_path = r"...\MSI.tif"
+    dem_path = r"...\DEM.tif"
+    gt_path = None
+
+    output_tif = r"...\output.tif"
+    output_png = r"...\output.png"
+
 
     tile_size = 256
     stride = 100
@@ -49,9 +51,6 @@ class Config:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-# ==============================================================
-# GDAL save helpers
 # ==============================================================
 def save_geotiff_float32(path, meta, write_block_fn, nodata=-9999.0):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -75,9 +74,6 @@ def save_geotiff_float32(path, meta, write_block_fn, nodata=-9999.0):
     out_ds.FlushCache()
     out_ds = None
 
-
-# ==============================================================
-# Gaussian blending
 # ==============================================================
 def gaussian_window(tile_size, sigma_ratio=0.25):
     center = (tile_size - 1) / 2.0
@@ -91,7 +87,7 @@ def gaussian_window(tile_size, sigma_ratio=0.25):
 
 
 # ==============================================================
-# Model
+# Load Model
 # ==============================================================
 def load_model(ckpt_path, device, msi_channels=4, dem_channels=1):
     print(f"\n>>> Loading model: {ckpt_path}")
@@ -126,8 +122,6 @@ def forward_prob(model_fea, model_dec, msi_bchw, dem_bchw):
     return prob  # [B,H,W]
 
 
-# ==============================================================
-# Inference (data loading replaced by data_loader.get_dataloader)
 # ==============================================================
 def inference(cfg: Config):
     model_fea, model_dec = load_model(cfg.model_ckpt, cfg.device, msi_channels=4, dem_channels=1)
@@ -200,9 +194,6 @@ def inference(cfg: Config):
     nodata = -9999.0
     eps = 1e-6
 
-    # ---- FIX (small change): stretch final blended output to full [0,1] ----
-    # Your blended probabilities are already in [0,1], but may peak at ~0.6.
-    # We rescale by global max so the output range becomes [0,1].
     global_max = 0.0
     block_h = 1024
     for y in tqdm(range(0, H, block_h), desc="Scan global max"):
@@ -286,9 +277,6 @@ def inference(cfg: Config):
 
     print("\n>>> All done.")
 
-
-# ==============================================================
-# CLI
 # ==============================================================
 def build_cfg_from_args():
     p = argparse.ArgumentParser()
