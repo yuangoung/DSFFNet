@@ -1,18 +1,13 @@
 # ==============================================================
-# File: test_inference.py
+# predict_logit.py
 # Description:
-#   One-click inference (logit-domain blending) using data_loader.py
-#   - Data reading & normalization fully consistent with training (data_loader.py)
-#   - Sliding window coords cover full raster (include last tile) without padding
-#   - Gaussian overlap blending in LOGIT domain (no logit clipping)
+#   - Data reading & normalization fully consistent with training
+#   - Sliding window coords cover full raster without padding
 #   - After stitching: global stretch to [0,1] in probability space
-#       * p_low/p_high: percentile anchors for 0 and 1
-#       * alpha in [0,1]: strength of percentile anchors
-#   - Output: GeoTIFF (stretched 0-1) + PNG (colormap + colorbar)
-# Author: YY Lab
-# Date: 2025-12
+#       p_low/p_high: percentile anchors for 0 and 1
+#       alpha in [0,1]: strength of percentile anchors
+#   - Output: GeoTIFF (stretched 0-1)
 # ==============================================================
-
 import os
 import time
 import argparse
@@ -24,34 +19,22 @@ import torch.utils.data as tud
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from osgeo import gdal
-
 from FeatureExtractor import MDFeatureExtractor
 from shared_decoder import SharedDecoder
-
-# --- training-consistent loader ---
 from data_loader import LandslideDataset
-
 
 # ==============================================================
 # Config
 # ==============================================================
 class Config:
-    model_ckpt = r"F:\landslides2026\checkpoints_MDDB\epoch_77.pth"
-    # msi_path = r"F:\train2026\src_4937_MSI.tif"
-    # dem_path = r"F:\train2026\src_4937_DEM.tif"
-    msi_path = r"F:\UESTC20250913\landslidesdatasets\GF7_4937_Fusion_21000.tif"
-    dem_path = r"F:\UESTC20250913\landslidesdatasets\GF7_4937_DEM_Clip21000.tif"
-    #
-    # msi_path = r"F:\UESTC20250913\landslidesdatasets\GF7_0285_Fusion_21000.tif"
-    # dem_path = r"F:\UESTC20250913\landslidesdatasets\GF7_0285_DEM_Clip21000.tif"
+    model_ckpt = r"F:...\checkpoints_MDDB\best_logs_MDDB.pth"
 
-    # msi_path = r"F:\UESTC20250913\landslidesdatasets\GF7_4938_Fusion_21000.tif"
-    # dem_path = r"F:\UESTC20250913\landslidesdatasets\GF7_4938_DEM_Clip21000.tif"
+    msi_path = r"...\MSI.tif"
+    dem_path = r"...\DEM.tif"
+    gt_path = None
 
-    gt_path    = None
-
-    output_tif = r"F:\landslides2026\4937_logepoch_77.tif"
-    output_png = r"F:\landslides2026\4937_logepoch_77.png"
+    output_tif = r"...\output.tif"
+    output_png = r"...\output.png"
 
     tile_size  = 256
     stride     = 64
@@ -75,8 +58,6 @@ class Config:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-# ==============================================================
-# Helpers
 # ==============================================================
 def sliding_positions(length, tile, stride):
     if length <= tile:
@@ -133,14 +114,7 @@ def save_geotiff_float32(path, meta, write_block_fn, nodata=-9999.0):
 
 
 def coords_to_numpy(coords) -> np.ndarray:
-    """
-    Robustly convert dataloader-collated coords to ndarray [B,2] int64.
 
-    Possible forms:
-      1) coords is Tensor [B,2]
-      2) coords is tuple(tensor_x [B], tensor_y [B])  <-- your current case
-      3) coords is list of tuples [(x,y),...]
-    """
     if torch.is_tensor(coords):
         arr = coords.detach().cpu().numpy()
         if arr.ndim == 1 and arr.size == 2:
@@ -232,7 +206,7 @@ def estimate_stretch_range_from_memmap(
 
 
 # ==============================================================
-# Model
+# Load Model
 # ==============================================================
 def load_model(ckpt_path, device, msi_channels=4, dem_channels=1):
     print(f"\n>>> Loading model: {ckpt_path}")
@@ -267,8 +241,6 @@ def forward_logits(model_fea, model_dec, msi_bchw, dem_bchw):
 
 
 # ==============================================================
-# Dataset wrapper: use data_loader.py but cover full raster
-# ==============================================================
 class InferenceDataset(LandslideDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -279,8 +251,6 @@ class InferenceDataset(LandslideDataset):
         print(f"[InferenceDataset] Full-coverage patches: {len(self.coords)}")
 
 
-# ==============================================================
-# Inference
 # ==============================================================
 def inference(cfg: Config):
     torch.backends.cudnn.benchmark = True
@@ -416,8 +386,6 @@ def inference(cfg: Config):
     print("\n>>> All done.")
 
 
-# ==============================================================
-# CLI
 # ==============================================================
 def build_cfg_from_args():
     p = argparse.ArgumentParser()
