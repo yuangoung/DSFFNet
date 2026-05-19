@@ -1,24 +1,20 @@
 # ==============================================================
-# File: data_loader.py
+# data_loader.py
 # Description:
-#   Data loading and balanced sampling for landslide susceptibility analysis
-#   with per-epoch random sampling (equal positive/negative ratio).
-#   - Band-wise robust normalization to [0, 1] (percentile-based)
-#   - NoData/NaN/Inf safe
-# Author: [Your Name or Laboratory]
-# Date: 2025-12
+#   Data loading for landslide susceptibility analysis
+#   with per-epoch random sampling.
+#   Band-wise robust normalization to [0, 1] (percentile based)
+#   Without NoData/NaN/Inf
 # ==============================================================
-
 import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, Subset
 from osgeo import gdal
-
-
 # ==============================================================
-# Helper: Load GeoTIFF
+#  GeoTIFF
 # ==============================================================
+
 def load_tif(path):
     dataset = gdal.Open(path)
     if dataset is None:
@@ -41,7 +37,7 @@ def load_tif(path):
 
 
 # ==============================================================
-# Robust normalization utilities
+# normalization
 # ==============================================================
 def _to_float_and_clean(arr, fill_value=0.0):
     """Convert to float32 and replace NaN/Inf with fill_value."""
@@ -84,10 +80,10 @@ def bandwise_robust_norm_01(tile_chw, clip_percent=(2.0, 98.0), fill_value=0.0, 
 
     return out
 
-
 # ==============================================================
 # Dataset
 # ==============================================================
+
 class LandslideDataset(Dataset):
     def __init__(
         self,
@@ -176,6 +172,7 @@ class LandslideDataset(Dataset):
 # ==============================================================
 # Dataloader
 # ==============================================================
+
 def get_dataloader(
     msi_path,
     dem_path,
@@ -207,8 +204,9 @@ def get_dataloader(
 
 
 # ==============================================================
-# Helper for Label Statistics
+# Label Statistics
 # ==============================================================
+
 def get_label_balance_info(dataset):
     """Compute label balance from GT."""
     if dataset.gt is None:
@@ -232,7 +230,7 @@ def get_label_balance_info(dataset):
 
 
 # ==============================================================
-# Dynamic Sampling (used in main.py)
+# Randomly sample a subset with equal positive/negative samples
 # ==============================================================
 def get_balanced_subset(dataset, positive_ratio=0.2, negative_ratio=0.2):
     """
