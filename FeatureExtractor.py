@@ -1,10 +1,10 @@
 # ==============================================================
-# File: FeatureExtractor.py
+# FeatureExtractor.py
 # Description:
-#   Dual-Branch Feature Extractor for MSI & DEM
-#   - MSI: Mamba-enhanced Spectral-Spatial Encoder
-#   - DEM: Wavelet-Convolutional Morphology Encoder (DWT)
-#   - Outputs spatially aligned features (same H×W per level)
+#   Dual-Branch Feature Extractor for MSI and DEM
+#   MSI: Mamba-enhanced Spectral-Spatial Encoder
+#   DEM: Wavelet-Convolutional Morphology Encoder (DWT)
+#   Outputs spatially aligned features (same H×W per level)
 # ==============================================================
 import torch
 import torch.nn as nn
@@ -26,12 +26,11 @@ class BasicConvBlock(nn.Module):
     def forward(self, x):
         return self.block(x)
 
-
 # --------------------------------------------------------------
-# Gated Linear Unit
+# Gated Linear
 # --------------------------------------------------------------
 class GLUBlock(nn.Module):
-    """Gated Linear Unit: A * sigmoid(B)"""
+
     def __init__(self, dim):
         super().__init__()
         self.fc1 = nn.Conv2d(dim, dim, 1)
@@ -40,74 +39,11 @@ class GLUBlock(nn.Module):
     def forward(self, x):
         return self.fc1(x) * torch.sigmoid(self.fc2(x))
 # --------------------------------------------------------------
-# Mamba SSM Block (lightweight, conv-gated approximation)
+# Mamba SSM Block: SS2D 4-direction scan
 # --------------------------------------------------------------
-class MambaSSMBlock(nn.Module):
+class SS2DMambaBlock(nn.Module):
     """
-    Vision Mamba-like Block (conv-gated)
-    """
-    def __init__(self, dim, expansion=2, dropout=0.1):
-        super().__init__()
-        self.norm = nn.BatchNorm2d(dim)
-        hidden_dim = int(dim * expansion)
-
-        self.in_proj = nn.Conv2d(dim, hidden_dim, 1, bias=False)
-        self.dwconv = nn.Conv2d(hidden_dim, hidden_dim, 3, padding=1, groups=hidden_dim, bias=False)
-        self.gate = nn.Conv2d(hidden_dim, hidden_dim, 1, bias=False)
-        self.out_proj = nn.Conv2d(hidden_dim, dim, 1, bias=False)
-
-        self.drop = nn.Dropout(dropout)
-
-    def forward(self, x):
-        residual = x
-        x = self.norm(x)
-
-        u = self.in_proj(x)
-        v = self.dwconv(u)
-        g = torch.sigmoid(self.gate(u))
-        y = v * g
-
-        y = self.out_proj(y)
-        return residual + self.drop(y)
-
-class LightGatedConvBlock(nn.Module):
-    """
-    Lightweight local modeling:
-    1x1 -> DWConv3x3 -> gate -> 1x1
-    Good for local texture/edges, cheap and stable.
-    """
-    def __init__(self, dim, expansion=2, dropout=0.1):
-        super().__init__()
-        self.norm = nn.BatchNorm2d(dim)
-        hidden_dim = int(dim * expansion)
-
-        self.in_proj = nn.Conv2d(dim, hidden_dim, 1, bias=False)
-        self.dwconv  = nn.Conv2d(hidden_dim, hidden_dim, 3, padding=1, groups=hidden_dim, bias=False)
-        self.gate    = nn.Conv2d(hidden_dim, hidden_dim, 1, bias=False)
-        self.out_proj= nn.Conv2d(hidden_dim, dim, 1, bias=False)
-
-        self.drop = nn.Dropout(dropout)
-
-    def forward(self, x):
-        residual = x
-        x = self.norm(x)
-
-        u = self.in_proj(x)
-        v = self.dwconv(u)
-        g = torch.sigmoid(self.gate(u))
-        y = v * g
-
-        y = self.out_proj(y)
-        return residual + self.drop(y)
-
-
-# --------------------------------------------------------------
-# True block (global): Selective SSM + SS2D (4-direction scan)
-# --------------------------------------------------------------
-class TrueSS2DMambaBlock(nn.Module):
-    """
-    True selective scan (SSM) + SS2D (4 directions) in pure PyTorch.
-    Correct behavior, but slower than fused CUDA kernels.
+    Vision SS2D (4 directions), but slower than fused CUDA kernels.
     """
     def __init__(self, dim, expansion=1, dropout=0.1, d_state=16):
         super().__init__()
@@ -205,6 +141,67 @@ class TrueSS2DMambaBlock(nn.Module):
 
         y = self.out_proj(y)
         return residual + self.drop(y)
+
+# --------------------------------------------------------------
+# Mamba Lightweight SSM Block (Selective lightweight 2-direction scan)
+# --------------------------------------------------------------
+
+class MambaSSMBlock(nn.Module):
+    """
+    Mamba Lightweight Block (conv-gated)
+    """
+    def __init__(self, dim, expansion=2, dropout=0.1):
+        super().__init__()
+        self.norm = nn.BatchNorm2d(dim)
+        hidden_dim = int(dim * expansion)
+
+        self.in_proj = nn.Conv2d(dim, hidden_dim, 1, bias=False)
+        self.dwconv = nn.Conv2d(hidden_dim, hidden_dim, 3, padding=1, groups=hidden_dim, bias=False)
+        self.gate = nn.Conv2d(hidden_dim, hidden_dim, 1, bias=False)
+        self.out_proj = nn.Conv2d(hidden_dim, dim, 1, bias=False)
+
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x):
+        residual = x
+        x = self.norm(x)
+
+        u = self.in_proj(x)
+        v = self.dwconv(u)
+        g = torch.sigmoid(self.gate(u))
+        y = v * g
+
+        y = self.out_proj(y)
+        return residual + self.drop(y)
+
+class GatedConvBlock(nn.Module):
+    """
+    local modeling:
+    """
+    def __init__(self, dim, expansion=2, dropout=0.1):
+        super().__init__()
+        self.norm = nn.BatchNorm2d(dim)
+        hidden_dim = int(dim * expansion)
+
+        self.in_proj = nn.Conv2d(dim, hidden_dim, 1, bias=False)
+        self.dwconv  = nn.Conv2d(hidden_dim, hidden_dim, 3, padding=1, groups=hidden_dim, bias=False)
+        self.gate    = nn.Conv2d(hidden_dim, hidden_dim, 1, bias=False)
+        self.out_proj= nn.Conv2d(hidden_dim, dim, 1, bias=False)
+
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x):
+        residual = x
+        x = self.norm(x)
+
+        u = self.in_proj(x)
+        v = self.dwconv(u)
+        g = torch.sigmoid(self.gate(u))
+        y = v * g
+
+        y = self.out_proj(y)
+        return residual + self.drop(y)
+
 # --------------------------------------------------------------
 # MSI Encoder (two-level: H/2, H/4)
 # --------------------------------------------------------------
@@ -218,22 +215,26 @@ class MSIEncoder(nn.Module):
         super().__init__()
         self.low = nn.Sequential(
             BasicConvBlock(in_ch, base_ch * 2, k=3, s=2, p=1),  # H/2
-            MambaSSMBlock(base_ch * 2),
+            SS2DMambaBlock(base_ch * 2, expansion=1, dropout=0.1, d_state=16),
         )
 
         self.high = nn.Sequential(
             BasicConvBlock(base_ch * 2, base_ch * 8, k=3, s=2, p=1),  # H/4
-            MambaSSMBlock(base_ch * 8),
+            SS2DMambaBlock(base_ch * 8, expansion=1, dropout=0.1, d_state=16),
         )
+
+        # --------------------------------------------------------------
+        # Selective Lightweight Mamba SSM Block ( lightweight 2-direction scan)
+        # --------------------------------------------------------------
 
         # self.low = nn.Sequential(
         #     BasicConvBlock(in_ch, base_ch * 2, k=3, s=2, p=1),  # H/2
-        #     LightGatedConvBlock(base_ch * 2, expansion=2, dropout=0.1),
+        #     GatedConvBlock(base_ch * 2),
         # )
         #
         # self.high = nn.Sequential(
         #     BasicConvBlock(base_ch * 2, base_ch * 8, k=3, s=2, p=1),  # H/4
-        #     TrueSS2DMambaBlock(base_ch * 8, expansion=1, dropout=0.1, d_state=16),
+        #     MambaSSMBlock(base_ch * 8),
         # )
 
     def forward(self, msi):
@@ -241,10 +242,10 @@ class MSIEncoder(nn.Module):
         high = self.high(low)
         return low, high
 
-
 # --------------------------------------------------------------
 # DEM Encoder (DWT downsample + conv)
 # --------------------------------------------------------------
+
 class DWTFeatureExtractor(nn.Module):
     """
     Haar DWT for arbitrary channel tensors via grouped conv.
@@ -260,7 +261,6 @@ class DWTFeatureExtractor(nn.Module):
         dec_lo = torch.tensor(w.dec_lo[::-1], dtype=torch.float32)
         dec_hi = torch.tensor(w.dec_hi[::-1], dtype=torch.float32)
 
-        # 注册为 buffer，自动跟随 .to(device)
         self.register_buffer("dec_lo", dec_lo)
         self.register_buffer("dec_hi", dec_hi)
 
@@ -284,8 +284,7 @@ class DWTFeatureExtractor(nn.Module):
         lo_h = lo.view(1, 1, 1, k).repeat(C, 1, 1, 1)
         hi_h = hi.view(1, 1, 1, k).repeat(C, 1, 1, 1)
 
-        # 为 Haar(k=2) 这里不 padding 也能稳定得到 H/2, W/2（H,W 偶数）
-        # 如果你换成更长的小波，可能需要改 padding/mode（symmetric/periodization）
+
         x_lo = F.conv2d(x, lo_v, stride=(2, 1), padding=(0, 0), groups=C)
         x_hi = F.conv2d(x, hi_v, stride=(2, 1), padding=(0, 0), groups=C)
 
@@ -305,13 +304,11 @@ class DEMEncoder(nn.Module):
     """
     def __init__(self, in_ch=1, base_ch=64, wavelet="haar"):
         super().__init__()
-        base_half = base_ch // 2  # 关键：必须是 int
+        base_half = base_ch // 2
 
-        # 不在这里下采样，让 DWT 完成 H/2
         self.low_pre = BasicConvBlock(in_ch, base_half, k=3, s=1, p=1)
         self.low_dwt = DWTFeatureExtractor(in_ch=base_half, out_ch=base_ch * 2, wavelet=wavelet)
 
-        # 同理：让 DWT 把 H/2 -> H/4
         self.high_pre = BasicConvBlock(base_ch * 2, base_ch * 2, k=3, s=1, p=1)
         self.high_dwt = DWTFeatureExtractor(in_ch=base_ch * 2, out_ch=base_ch * 8, wavelet=wavelet)
 
@@ -327,6 +324,7 @@ class DEMEncoder(nn.Module):
 # --------------------------------------------------------------
 # Combined Feature Extractor
 # --------------------------------------------------------------
+
 class MDFeatureExtractor(nn.Module):
     def __init__(self, msi_channels=4, dem_channels=1, base_ch=64, wavelet="haar"):
         super().__init__()
@@ -342,12 +340,13 @@ class MDFeatureExtractor(nn.Module):
 # --------------------------------------------------------------
 # Test
 # --------------------------------------------------------------
+
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = MDFeatureExtractor(msi_channels=4, dem_channels=1, base_ch=64, wavelet="haar").to(device)
 
-    msi = torch.randn(15, 4, 256, 256, device=device)
-    dem = torch.randn(15, 1, 256, 256, device=device)
+    msi = torch.randn(1, 4, 256, 256, device=device)
+    dem = torch.randn(1, 1, 256, 256, device=device)
 
     (msi_low, msi_high), (dem_low, dem_high) = model(msi, dem)
 
