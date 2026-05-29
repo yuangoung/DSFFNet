@@ -36,9 +36,9 @@ class Config:
     output_tif = r"...\output.tif"
     output_png = r"...\output.png"
 
-    tile_size  = 256
-    stride     = 64
-    batch_size = 21
+    tile_size  = 512
+    stride     = 256
+    batch_size = 24
     num_workers = 0  # Windows safe
 
     # global stretch (after stitching)
