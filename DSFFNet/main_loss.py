@@ -30,9 +30,9 @@ class Config:
     dem_path = r"...\demo_datasets\DEM_demo_Beiluhe.tif"
     gt_path  = r"...\demo_datasets\DEM_demo_Beiluhe.tif"
 
-    tile_size = 256
-    stride = 200
-    batch_size = 21
+    tile_size = 512
+    stride = 256
+    batch_size = 24
     num_workers = 0
     num_epochs = 150
     lr = 1e-4
