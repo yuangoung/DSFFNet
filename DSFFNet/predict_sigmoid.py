@@ -35,9 +35,9 @@ class Config:
     output_png = r"...\output.png"
 
 
-    tile_size = 256
-    stride = 100
-    batch_size = 21
+    tile_size = 512
+    stride = 256
+    batch_size = 24
 
     # robust normalization (match your new data_loader.py)
     clip_percent = (2.0, 98.0)
